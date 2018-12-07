@@ -125,20 +125,37 @@ class ApolloClient
             $request_list[$namespaceName] = $request;
             curl_multi_add_handle($multi_ch, $ch);
         }
-
         $active = null;
-        // 执行批处理句柄
         do {
             $mrc = curl_multi_exec($multi_ch, $active);
         } while ($mrc == CURLM_CALL_MULTI_PERFORM);
 
         while ($active && $mrc == CURLM_OK) {
-            if (curl_multi_select($multi_ch) != -1) {
-                do {
-                    $mrc = curl_multi_exec($multi_ch, $active);
-                } while ($mrc == CURLM_CALL_MULTI_PERFORM);
+            // Wait for activity on any curl-connection
+            if (curl_multi_select($multi_ch) == -1) {
+                usleep(1);
             }
+
+            // Continue to exec until curl is ready to
+            // give us more data
+            do {
+                $mrc = curl_multi_exec($multi_ch, $active);
+            } while ($mrc == CURLM_CALL_MULTI_PERFORM);
         }
+
+//        $active = null;
+//        // 执行批处理句柄
+//        do {
+//            $mrc = curl_multi_exec($multi_ch, $active);
+//        } while ($mrc == CURLM_CALL_MULTI_PERFORM);
+//
+//        while ($active && $mrc == CURLM_OK) {
+//            if (curl_multi_select($multi_ch) != -1) {
+//                do {
+//                    $mrc = curl_multi_exec($multi_ch, $active);
+//                } while ($mrc == CURLM_CALL_MULTI_PERFORM);
+//            }
+//        }
 
         // 获取结果
         $response_list = [];
