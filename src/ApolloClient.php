@@ -12,6 +12,7 @@ class ApolloClient
     protected $pullTimeout = 10; //获取某个namespace配置的请求超时时间
     protected $intervalTimeout = 60; //每次请求获取apollo配置变更时的超时时间
     public $save_dir; //配置保存目录
+    protected $modifyEnv;//是否自动修改 env 文件
 
     /**
      * ApolloClient constructor.
@@ -27,6 +28,30 @@ class ApolloClient
             $this->notifications[$namespace] = ['namespaceName' => $namespace, 'notificationId' => -1];
         }
         $this->save_dir = dirname($_SERVER['SCRIPT_FILENAME']);
+    }
+
+    private function modifyEnv(array $data)
+    {
+        $envPath = base_path() . DIRECTORY_SEPARATOR . '.env';
+
+        $contentArray = [];
+        foreach ($data as $key => $value){
+            $contentArray[] = $key . '=' . $value;
+        }
+
+        $content = implode($contentArray, "\n");
+
+        \File::put($envPath, $content);
+    }
+
+    public function setModifyEnv($mode)
+    {
+        $this->modifyEnv = $mode;
+    }
+
+    private function isModifyEnv()
+    {
+        return $this->modifyEnv;
     }
 
     public function setCluster($cluster)
@@ -94,6 +119,10 @@ class ApolloClient
             $result = json_decode($body, true);
             $content = '<?php return ' . var_export($result, true) . ';';
             file_put_contents($config_file, $content);
+
+            if($this->isModifyEnv() and isset($result['configurations'])){
+                $this->modifyEnv($result['configurations']);
+            }
         }elseif ($httpCode != 304) {
             echo $body ?: $error."\n";
             return false;
@@ -170,6 +199,10 @@ class ApolloClient
                 $result = json_decode($result, true);
                 $content = '<?php return '.var_export($result, true).';';
                 file_put_contents($req['config_file'], $content);
+
+                if($this->isModifyEnv() and isset($result['configurations'])){
+                    $this->modifyEnv($result['configurations']);
+                }
             }elseif ($code != 304) {
                 echo 'pull config of namespace['.$namespaceName.'] error:'.($result ?: $error)."\n";
                 $response_list[$namespaceName] = false;
