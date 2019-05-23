@@ -120,7 +120,7 @@ class ApolloClient
             $content = '<?php return ' . var_export($result, true) . ';';
             file_put_contents($config_file, $content);
 
-            if($this->isModifyEnv() and isset($result['configurations'])){
+            if($namespaceName == 'application' and $this->isModifyEnv() and isset($result['configurations'])){
                 $this->modifyEnv($result['configurations']);
             }
         }elseif ($httpCode != 304) {
@@ -200,7 +200,7 @@ class ApolloClient
                 $content = '<?php return '.var_export($result, true).';';
                 file_put_contents($req['config_file'], $content);
 
-                if($this->isModifyEnv() and isset($result['configurations'])){
+                if($namespaceName == 'application' and $this->isModifyEnv() and isset($result['configurations'])){
                     $this->modifyEnv($result['configurations']);
                 }
             }elseif ($code != 304) {
