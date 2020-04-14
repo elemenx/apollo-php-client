@@ -1,12 +1,13 @@
 <?php
 
-namespace Org\Multilinguals\Apollo\Client;
+namespace ElemenX\ApolloClient;
 
 class ApolloClient
 {
     protected $configServer; //apollo服务端地址
     protected $appId; //apollo配置项目的appid
     protected $cluster = 'default';
+    protected $accessKeySecret = null;
     protected $clientIp = '127.0.0.1'; //绑定IP做灰度发布用
     protected $notifications = [];
     protected $pullTimeout = 10; //获取某个namespace配置的请求超时时间
@@ -22,7 +23,7 @@ class ApolloClient
      */
     public function __construct($configServer, $appId, array $namespaces)
     {
-        $this->configServer = $configServer;
+        $this->configServer = rtrim($configServer, '/');
         $this->appId = $appId;
         foreach ($namespaces as $namespace) {
             $this->notifications[$namespace] = ['namespaceName' => $namespace, 'notificationId' => -1];
@@ -39,9 +40,9 @@ class ApolloClient
             $contentArray[] = $key . '=' . $value;
         }
 
-        $content = implode($contentArray, "\n");
+        $content = implode("\n", $contentArray);
 
-        \File::put($envPath, $content);
+        file_put_contents($envPath, $content);
     }
 
     public function setModifyEnv($mode)
@@ -54,6 +55,16 @@ class ApolloClient
         return $this->modifyEnv;
     }
 
+    private function getSignedHeader($uri)
+    {
+        $timestamp = round(microtime(true) * 1000);
+
+        return [
+            'Authorization: Apollo ' . $this->appId . ':' . hash_hmac('sha1', $timestamp . "\n" . $uri, $this->accessKeySecret),
+            'Timestamp: ' . $timestamp
+        ];
+    }
+
     public function setCluster($cluster)
     {
         $this->cluster = $cluster;
@@ -62,6 +73,11 @@ class ApolloClient
     public function setClientIp($ip)
     {
         $this->clientIp = $ip;
+    }
+
+    public function setAccessKeySecret($accessKeySecret)
+    {
+        $this->accessKeySecret = $accessKeySecret;
     }
 
     public function setSaveDir($saveDir) {
@@ -93,19 +109,26 @@ class ApolloClient
         return $releaseKey;
     }
 
+    //获取单个namespace的配置文件路径
+    public function getConfigFile($namespaceName) {
+        return $this->save_dir.DIRECTORY_SEPARATOR.'apolloConfig.'.$namespaceName.'.php';
+    }
+
     //获取单个namespace的配置-无缓存的方式
     public function pullConfig($namespaceName) {
-        $base_api = rtrim($this->configServer, '/').'/configs/'.$this->appId.'/'.$this->cluster.'/';
-        $api = $base_api.$namespaceName;
+        $request_uri = '/configs/'.$this->appId.'/'.$this->cluster.'/'.$namespaceName;
 
         $args = [];
         $args['ip'] = $this->clientIp;
-        $config_file = $this->save_dir.DIRECTORY_SEPARATOR.'apolloConfig.'.$namespaceName.'.php';
+        $config_file = $this->getConfigFile($namespaceName);
         $args['releaseKey'] = $this->_getReleaseKey($config_file);
 
-        $api .= '?' . http_build_query($args);
+        $request_uri .= '?' . http_build_query($args);
 
-        $ch = curl_init($api);
+        $ch = curl_init($this->configServer.$request_uri);
+        if (!is_null($this->accessKeySecret)) {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $this->getSignedHeader($request_uri));
+        }
         curl_setopt($ch, CURLOPT_TIMEOUT, $this->pullTimeout);
         curl_setopt($ch, CURLOPT_HEADER, false);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
@@ -135,17 +158,20 @@ class ApolloClient
         if (! $namespaceNames) return [];
         $multi_ch = curl_multi_init();
         $request_list = [];
-        $base_url = rtrim($this->configServer, '/').'/configs/'.$this->appId.'/'.$this->cluster.'/';
+        $base_uri = '/configs/'.$this->appId.'/'.$this->cluster.'/';
         $query_args = [];
         $query_args['ip'] = $this->clientIp;
         foreach ($namespaceNames as $namespaceName) {
             $request = [];
-            $config_file = $this->save_dir.DIRECTORY_SEPARATOR.'apolloConfig.'.$namespaceName.'.php';
-            $request_url = $base_url.$namespaceName;
+            $config_file = $this->getConfigFile($namespaceName);
+            $request_uri = $base_uri.$namespaceName;
             $query_args['releaseKey'] = $this->_getReleaseKey($config_file);
             $query_string = '?'.http_build_query($query_args);
-            $request_url .= $query_string;
-            $ch = curl_init($request_url);
+            $request_uri .= $query_string;
+            $ch = curl_init($this->configServer.$request_uri);
+            if (!is_null($this->accessKeySecret)) {
+                curl_setopt($ch, CURLOPT_HTTPHEADER, $this->getSignedHeader($request_uri));
+            }
             curl_setopt($ch, CURLOPT_TIMEOUT, $this->pullTimeout);
             curl_setopt($ch, CURLOPT_HEADER, false);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
@@ -160,31 +186,14 @@ class ApolloClient
         } while ($mrc == CURLM_CALL_MULTI_PERFORM);
 
         while ($active && $mrc == CURLM_OK) {
-            // Wait for activity on any curl-connection
             if (curl_multi_select($multi_ch) == -1) {
-                usleep(1);
+                usleep(100);
             }
-
-            // Continue to exec until curl is ready to
-            // give us more data
             do {
                 $mrc = curl_multi_exec($multi_ch, $active);
             } while ($mrc == CURLM_CALL_MULTI_PERFORM);
+            
         }
-
-//        $active = null;
-//        // 执行批处理句柄
-//        do {
-//            $mrc = curl_multi_exec($multi_ch, $active);
-//        } while ($mrc == CURLM_CALL_MULTI_PERFORM);
-//
-//        while ($active && $mrc == CURLM_OK) {
-//            if (curl_multi_select($multi_ch) != -1) {
-//                do {
-//                    $mrc = curl_multi_exec($multi_ch, $active);
-//                } while ($mrc == CURLM_CALL_MULTI_PERFORM);
-//            }
-//        }
 
         // 获取结果
         $response_list = [];
@@ -213,14 +222,17 @@ class ApolloClient
     }
 
     protected function _listenChange(&$ch, $callback = null) {
-        $base_url = rtrim($this->configServer, '/').'/notifications/v2?';
+        $base_uri = '/notifications/v2?';
         $params = [];
         $params['appId'] = $this->appId;
         $params['cluster'] = $this->cluster;
         do {
             $params['notifications'] = json_encode(array_values($this->notifications));
-            $query = http_build_query($params);
-            curl_setopt($ch, CURLOPT_URL, $base_url.$query);
+            $request_uri = $base_uri.http_build_query($params);
+            curl_setopt($ch, CURLOPT_URL, $this->configServer.$request_uri);
+            if (!is_null($this->accessKeySecret)) {
+                curl_setopt($ch, CURLOPT_HTTPHEADER, $this->getSignedHeader($request_uri));
+            }
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch,CURLINFO_HTTP_CODE);
             $error = curl_error($ch);

@@ -3,15 +3,15 @@
 ## install
 php version >= 7.0
 ```bash
-$ composer require multilinguals/apollo-client
+$ composer require elemenx/apollo-client
 ```
 php version >= 5.4 , <7.0
 ```bash
-$ composer require multilinguals/apollo-client --ignore-platform-reqs
+$ composer require elemenx/apollo-client --ignore-platform-reqs
 ```
 
 ## Features
-- 支持apollo配置变更的适时获取
+- 支持apollo配置变更的实时获取
 - 支持拉取配置后自定义的回调处理
 
 ## Usage
@@ -22,7 +22,7 @@ $ composer require multilinguals/apollo-client --ignore-platform-reqs
 #!/usr/bin/env php
 <?php
 require 'vender/autoload.php'; // autoload
-use Org\Multilinguals\Apollo\Client\ApolloClient;
+use ElemenX\ApolloClient\ApolloClient;
 
 //specify address of apollo server
 $server = getenv('CONFIG_SERVER'); // get server address from env
