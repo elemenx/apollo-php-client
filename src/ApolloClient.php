@@ -60,7 +60,7 @@ class ApolloClient
         $timestamp = round(microtime(true) * 1000);
 
         return [
-            'Authorization: Apollo ' . $this->appId . ':' . hash_hmac('sha1', $timestamp . "\n" . $uri, $this->accessKeySecret),
+            'Authorization: Apollo ' . $this->appId . ':' . base64_encode(hash_hmac('sha1', $timestamp . "\n" . $uri, $this->accessKeySecret, true)),
             'Timestamp: ' . $timestamp
         ];
     }
